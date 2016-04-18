@@ -94,12 +94,13 @@
 	{
 		echo "Create DB\n";
 		$bDidSomething = true;
-		$oDB =& DB::connect(CONST_Database_DSN, false);
-		if (!PEAR::isError($oDB))
-		{
-			fail('database already exists ('.CONST_Database_DSN.')');
-		}
-		passthruCheckReturn('createdb -E UTF-8 -p '.$aDSNInfo['port'].' '.$aDSNInfo['database']);
+		// $oDB =& DB::connect(CONST_Database_DSN, false);
+		// if (!PEAR::isError($oDB))
+		// {
+		// 	fail('database already exists ('.CONST_Database_DSN.')');
+		// }
+		// //passthruCheckReturn('createdb -E UTF-8 -p '.$aDSNInfo['port'].' '.$aDSNInfo['database']);
+		pgsqlRunScript("create database gis encoding 'UTF-8';\n", false);
 	}
 
 	if ($aCMDResult['setup-db'] || $aCMDResult['all'])
@@ -158,7 +159,7 @@
 		}
 		if (CONST_Use_Extra_US_Postcodes)
 		{
-			pgsqlRunScriptFile(CONST_BasePath.'/data/us_postcode.sql');
+		pgsqlRunScriptFile(CONST_BasePath.'/data/us_postcode.sql');
 		}
 
 		if ($aCMDResult['no-partitions'])
@@ -170,8 +171,8 @@
 		// is only defined in the subsequently called create_tables.
 		// Create dummies here that will be overwritten by the proper
 		// versions in create-tables.
-		pgsqlRunScript('CREATE TABLE place_boundingbox ()');
-		pgsqlRunScript('create type wikipedia_article_match as ()');
+		pgsqlRunScript('CREATE TABLE place_boundingbox ()',false);
+		pgsqlRunScript('create type wikipedia_article_match as ()',false);
 	}
 
 	if ($aCMDResult['import-data'] || $aCMDResult['all'])
@@ -190,6 +191,7 @@
 		{
 			$osm2pgsql .= ' --flat-nodes '.CONST_Osm2pgsql_Flatnode_File;
 		}
+		$osm2pgsql .= ' --host=postgres --user=postgres';
 		if (CONST_Tablespace_Osm2pgsql_Data)
 			$osm2pgsql .= ' --tablespace-slim-data '.CONST_Tablespace_Osm2pgsql_Data;
 		if (CONST_Tablespace_Osm2pgsql_Index)
@@ -218,7 +220,7 @@
 		$bDidSomething = true;
 		if (!file_exists(CONST_InstallPath.'/module/nominatim.so')) fail("nominatim module not built");
 		$sTemplate = file_get_contents(CONST_BasePath.'/sql/functions.sql');
-		$sTemplate = str_replace('{modulepath}', CONST_InstallPath.'/module', $sTemplate);
+		$sTemplate = str_replace('{modulepath}', '/usr/local/lib', $sTemplate);
 		if ($aCMDResult['enable-diff-updates'])
 		{
 			$sTemplate = str_replace('RETURN NEW; -- %DIFFUPDATES%', '--', $sTemplate);
@@ -230,9 +232,9 @@
 		if (CONST_Limit_Reindexing)
 		{
 			$sTemplate = str_replace('--LIMIT INDEXING:', '', $sTemplate);
-		}
+	}
 		if (!CONST_Use_US_Tiger_Data)
-		{
+	{
 			$sTemplate = str_replace('-- %NOTIGERDATA% ', '', $sTemplate);
 		}
 		if (!CONST_Use_Aux_Location_data)
@@ -267,7 +269,7 @@
 		echo "Functions\n";
 		$sTemplate = file_get_contents(CONST_BasePath.'/sql/functions.sql');
 		$sTemplate = str_replace('{modulepath}',
-			                     CONST_InstallPath.'/module', $sTemplate);
+			                     '/usr/local/lib', $sTemplate);
 		pgsqlRunScript($sTemplate);
 	}
 
@@ -529,11 +531,11 @@
 
 		if (CONST_Use_Extra_US_Postcodes)
 		{
-			$sSQL = "insert into placex (osm_type,osm_id,class,type,postcode,calculated_country_code,geometry) ";
-			$sSQL .= "select 'P',nextval('seq_postcodes'),'place','postcode',postcode,'us',";
-			$sSQL .= "ST_SetSRID(ST_Point(x,y),4326) as geometry from us_postcode";
-			if (!pg_query($oDB->connection, $sSQL)) fail(pg_last_error($oDB->connection));
-		}
+		$sSQL = "insert into placex (osm_type,osm_id,class,type,postcode,calculated_country_code,geometry) ";
+		$sSQL .= "select 'P',nextval('seq_postcodes'),'place','postcode',postcode,'us',";
+		$sSQL .= "ST_SetSRID(ST_Point(x,y),4326) as geometry from us_postcode";
+		if (!pg_query($oDB->connection, $sSQL)) fail(pg_last_error($oDB->connection));
+	}
 	}
 
 	if ($aCMDResult['osmosis-init'] || ($aCMDResult['all'] && !$aCMDResult['drop'])) // no use doing osmosis-init when dropping update tables
@@ -634,7 +636,7 @@
 	{
 		$bDidSomething = true;
 		$sOutputFile = '';
-		$sBaseCmd = CONST_InstallPath.'/nominatim/nominatim -i -d '.$aDSNInfo['database'].' -P '.$aDSNInfo['port'].' -t '.$iInstances.$sOutputFile;
+		$sBaseCmd = CONST_InstallPath.'/nominatim/nominatim -i --host postgres --user postgres  -d '.$aDSNInfo['database'].' -P '.$aDSNInfo['port'].' -t '.$iInstances.$sOutputFile;
 		passthruCheckReturn($sBaseCmd.' -R 4');
 		if (!$aCMDResult['index-noanalyse']) pgsqlRunScript('ANALYSE');
 		passthruCheckReturn($sBaseCmd.' -r 5 -R 25');
@@ -786,7 +788,7 @@
 		// Convert database DSN to psql parameters
 		$aDSNInfo = DB::parseDSN(CONST_Database_DSN);
 		if (!isset($aDSNInfo['port']) || !$aDSNInfo['port']) $aDSNInfo['port'] = 5432;
-		$sCMD = 'psql -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'];
+		$sCMD = 'psql -h postgres -U postgres -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'];
 
 		$ahGzipPipes = null;
 		if (preg_match('/\\.gz$/', $sFilename))
@@ -843,12 +845,12 @@
 		// Convert database DSN to psql parameters
 		$aDSNInfo = DB::parseDSN(CONST_Database_DSN);
 		if (!isset($aDSNInfo['port']) || !$aDSNInfo['port']) $aDSNInfo['port'] = 5432;
-		$sCMD = 'psql -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'];
+		$sCMD = 'psql -h postgres -U postgres -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'];
 		if ($bfatal && !$aCMDResult['ignore-errors'])
 			$sCMD .= ' -v ON_ERROR_STOP=1';
 		$aDescriptors = array(
 			0 => array('pipe', 'r'),
-			1 => STDOUT, 
+			1 => STDOUT,
 			2 => STDERR
 		);
 		$ahPipes = null;
@@ -874,7 +876,7 @@
 		// Convert database DSN to psql parameters
 		$aDSNInfo = DB::parseDSN(CONST_Database_DSN);
 		if (!isset($aDSNInfo['port']) || !$aDSNInfo['port']) $aDSNInfo['port'] = 5432;
-		$sCMD = 'pg_restore -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'].' -Fc -a '.$sDumpFile;
+		$sCMD = 'pg_restore -U postgres -h postgres -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'].' -Fc -a '.$sDumpFile;
 
 		$aDescriptors = array(
 			0 => array('pipe', 'r'),
@@ -902,7 +904,7 @@
 		// Convert database DSN to psql parameters
 		$aDSNInfo = DB::parseDSN(CONST_Database_DSN);
 		if (!isset($aDSNInfo['port']) || !$aDSNInfo['port']) $aDSNInfo['port'] = 5432;
-		$sCMD = 'pg_restore -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'].' -Fc --clean '.$sDumpFile;
+		$sCMD = 'pg_restore -U postgres -h postgres -p '.$aDSNInfo['port'].' -d '.$aDSNInfo['database'].' -Fc --clean '.$sDumpFile;
 
 		$aDescriptors = array(
 			0 => array('pipe', 'r'),
